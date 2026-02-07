@@ -2,7 +2,8 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { AIRole, LegalAnalysisResult, CreativePromptResult, MarketingScriptResult, ArtStoryResult, LicensingStrategyResult, StyleAlgorithmResult, ImpactReportResult, AudioGenerationResult } from "../types.ts";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const GEMINI_API_KEY = 'AIzaSyDX0nudYBH6Vrx2JOi5mnSuDKMVogligTY';
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 /**
  * VOICE OF STAR: Generate Real Audio (TTS)
