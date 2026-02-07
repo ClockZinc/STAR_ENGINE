@@ -1,0 +1,7 @@
+{
+  "name": "Starlight Engine Ecosystem Matrix",
+  "description": "A four-in-one automated content production and matrix distribution system integrating law, public welfare, commerce, and technology.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

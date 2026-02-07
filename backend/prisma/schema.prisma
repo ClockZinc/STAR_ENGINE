@@ -1,0 +1,435 @@
+// 星光引擎 (Starlight Engine) - Prisma Schema
+// 数据库: PostgreSQL
+// 适用于: 自闭症儿童艺术创作与IP商业化平台
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 用户系统 ====================
+
+enum SystemRole {
+  VOLUNTEER // 志愿者：采集灵感
+  LAWYER    // 律师：合规审计
+  MERCHANT  // 商会：商业联名
+  ADMIN     // 管理员/指挥官
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  phone     String?  @unique
+  password  String   // bcrypt hashed
+  nickname  String
+  avatar    String?  // 头像URL
+  role      SystemRole
+  status    UserStatus @default(PENDING_VERIFICATION)
+  
+  // 扩展信息
+  realName      String?
+  idCardNumber  String?  // 身份证号（加密存储）
+  organization  String?  // 所属机构
+  
+  // 时间戳
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastLoginAt DateTime?
+  
+  // 关联
+  createdAssets   IPAsset[]      @relation("AssetCreator")
+  auditedAssets   IPAsset[]      @relation("AssetAuditor")
+  volunteerAssets IPAsset[]      @relation("VolunteerAssets")
+  licenses        License[]
+  transactions    Transaction[]
+  nfcRecords      NFCRecord[]
+  subscriptions   PartnerSubscription[]
+  
+  @@map("users")
+}
+
+// ==================== IP资产系统 ====================
+
+enum AssetType {
+  IMAGE       // 原始画作
+  ENHANCED    // AI增强图
+  THREE_D     // 3D模型
+  ALGORITHMIC // 风格算法
+  AUDIO       // 配乐/语音
+  VIDEO       // 视频
+}
+
+enum AssetWorkflowStatus {
+  RAW           // 原始状态
+  ENHANCED      // 已增强
+  THREE_D_GEN   // 3D生成中
+  THREE_D_DONE  // 3D已完成
+  ALGORITHMIC   // 算法提取完成
+  LEGAL_LOCKED  // 法务锁定
+  CONTRACTED    // 已签约
+  DISTRIBUTING  // 分发中
+  FROZEN        // 冻结
+  ARCHIVED      // 归档
+}
+
+enum CopyrightOwner {
+  CREATOR       // 创作者/监护人
+  WELFARE_ACCOUNT // 福利账户
+  PLATFORM      // 平台持有
+}
+
+model IPAsset {
+  id          String   @id @default(uuid())
+  title       String
+  description String?  @db.Text
+  
+  // 类型与状态
+  type        AssetType
+  status      AssetWorkflowStatus @default(RAW)
+  
+  // 创作者信息
+  creatorId   String
+  creator     User     @relation("AssetCreator", fields: [creatorId], references: [id])
+  
+  // 志愿者采集信息
+  volunteerId String?
+  volunteer   User?    @relation("VolunteerAssets", fields: [volunteerId], references: [id])
+  capturedAt  DateTime? // 采集时间
+  location    String?  // 采集地点
+  
+  // 文件存储
+  originalUrl     String   // 原始文件
+  enhancedUrl     String?  // 增强后文件
+  threeDModelUrl  String?  // 3D模型文件(.glb)
+  thumbnailUrl    String?  // 缩略图
+  
+  // AI分析结果
+  emotionTags     String[] // 情感标签
+  colorPalette    Json?    // 色彩分析
+  visualDNA       String?  // 视觉DNA描述
+  artStory        String?  @db.Text // AI生成的艺术故事
+  
+  // 版权与法务
+  copyrightOwner  CopyrightOwner @default(CREATOR)
+  legalHash       String?  // 区块链存证哈希
+  legalLockedAt   DateTime?
+  legalAuditorId  String?
+  legalAuditor    User?    @relation("AssetAuditor", fields: [legalAuditorId], references: [id])
+  dciCode         String?  @unique // DCI版权登记号
+  
+  // 商业信息
+  isAvailableForLicense Boolean @default(false)
+  suggestedPrice  Decimal? @db.Decimal(10, 2)
+  royaltySplit    Json?    // 分成比例 {creator: 70, platform: 30}
+  
+  // 时间戳
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // 关联
+  licenses        License[]
+  nfcItems        PhysicalItem[]
+  auditLogs       AuditLog[]
+  
+  @@index([status])
+  @@index([creatorId])
+  @@index([type])
+  @@map("ip_assets")
+}
+
+// ==================== 授权与合同系统 ====================
+
+enum LicenseType {
+  IMAGE       // 形象授权
+  STYLE       // 风格授权
+  ALGORITHMIC // 算法授权
+  EXCLUSIVE   // 独家授权
+  NON_EXCLUSIVE // 非独家授权
+}
+
+enum LicenseStatus {
+  DRAFT       // 草稿
+  PENDING     // 待签署
+  ACTIVE      // 生效中
+  EXPIRED     // 已过期
+  TERMINATED  // 提前终止
+  FROZEN      // 冻结（熔断）
+}
+
+model License {
+  id          String   @id @default(uuid())
+  licenseCode String   @unique // 授权编号
+  
+  // 授权方与被授权方
+  licensorId  String   // 授权方（平台或创作者）
+  licensor    User     @relation(fields: [licensorId], references: [id])
+  
+  licenseeName    String   // 被授权方名称
+  licenseeContact String?  // 联系人
+  licenseeEmail   String?  // 联系邮箱
+  
+  // 授权标的
+  assetId     String
+  asset       IPAsset  @relation(fields: [assetId], references: [id])
+  
+  // 授权条款
+  licenseType     LicenseType
+  status          LicenseStatus @default(DRAFT)
+  entryFee        Decimal  @db.Decimal(10, 2) // 入门费
+  royaltyRate     Decimal  @db.Decimal(5, 2)  // 分成比例(%)
+  minGuarantee    Decimal? @db.Decimal(10, 2) // 最低保证金
+  
+  // 时间范围
+  effectiveDate   DateTime
+  expiryDate      DateTime
+  autoRenew       Boolean  @default(false)
+  
+  // 使用范围
+  territory       String?  // 地域范围
+  usageField      String?  // 使用领域
+  usageLimit      Int?     // 使用数量限制
+  
+  // 熔断机制
+  isFrozen        Boolean  @default(false)
+  frozenAt        DateTime?
+  frozenReason    String?
+  
+  // 合同文件
+  contractUrl     String?  // 合同PDF
+  signedAt        DateTime?
+  
+  // 时间戳
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // 关联
+  transactions    Transaction[]
+  
+  @@index([status])
+  @@index([assetId])
+  @@map("licenses")
+}
+
+// ==================== 交易与收益系统 ====================
+
+enum TransactionType {
+  LICENSE_FEE     // 授权费
+  ROYALTY         // 版税分成
+  DONATION        // 捐赠（非项目内）
+  CRISIS_FUND     // 危机基金扣款
+  WITHDRAWAL      // 提现
+  PLATFORM_FEE    // 平台服务费
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  txnCode     String   @unique // 交易编号
+  
+  // 交易双方
+  payerId     String?  // 付款方
+  payer       User?    @relation(fields: [payerId], references: [id])
+  
+  payeeType   String   // 收款方类型: USER/PLATFORM/CRISIS_FUND
+  payeeId     String?  // 收款方ID
+  
+  // 交易信息
+  type        TransactionType
+  amount      Decimal  @db.Decimal(10, 2)
+  currency    String   @default("CNY")
+  status      TransactionStatus @default(PENDING)
+  
+  // 关联业务
+  licenseId   String?
+  license     License? @relation(fields: [licenseId], references: [id])
+  assetId     String?
+  
+  // 支付渠道
+  paymentMethod   String?  // wechat/alipay/bank
+  paymentRef      String?  // 第三方支付单号
+  paidAt          DateTime?
+  
+  // 描述
+  description     String?
+  metadata        Json?    // 额外信息
+  
+  // 时间戳
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([payerId])
+  @@index([status])
+  @@index([type])
+  @@map("transactions")
+}
+
+// ==================== 实物商品与NFC系统 ====================
+
+model PhysicalItem {
+  id          String   @id @default(uuid())
+  nfcUuid     String   @unique // NFC芯片UUID
+  
+  // 关联资产
+  assetId     String
+  asset       IPAsset  @relation(fields: [assetId], references: [id])
+  
+  // 批次信息
+  batchNumber String   // 生产批次
+  productName String   // 产品名称
+  productType String   // 产品类型
+  
+  // 销售状态
+  isSold      Boolean  @default(false)
+  soldAt      DateTime?
+  soldPrice   Decimal? @db.Decimal(10, 2)
+  
+  // 购买者信息
+  ownerNickname   String?  // 昵称（匿名）
+  ownerContact    String?  // 联系方式（加密）
+  
+  // 贡献金额（ dignity fund ）
+  contribution    Decimal @default(0) @db.Decimal(10, 2)
+  
+  // 溯源记录
+  manufactureDate DateTime? // 生产日期
+  manufacturer    String?   // 制造商
+  
+  // 时间戳
+  createdAt       DateTime @default(now())
+  
+  // 关联
+  nfcRecords      NFCRecord[]
+  
+  @@index([nfcUuid])
+  @@index([assetId])
+  @@map("physical_items")
+}
+
+model NFCRecord {
+  id          String   @id @default(uuid())
+  
+  // 关联
+  itemId      String
+  item        PhysicalItem @relation(fields: [itemId], references: [id])
+  
+  scannerId   String?  // 扫描者
+  scanner     User?    @relation(fields: [scannerId], references: [id])
+  
+  // 扫描信息
+  scannedAt   DateTime @default(now())
+  location    String?  // 扫描位置
+  deviceInfo  String?  // 设备信息
+  
+  // 验证结果
+  isAuthentic Boolean  @default(true)
+  
+  @@index([itemId])
+  @@index([scannedAt])
+  @@map("nfc_records")
+}
+
+// ==================== 合作订阅系统 ====================
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAUSED
+  EXPIRED
+  CANCELLED
+}
+
+enum SubscriptionPlan {
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+model PartnerSubscription {
+  id          String   @id @default(uuid())
+  
+  partnerId   String
+  partner     User     @relation(fields: [partnerId], references: [id])
+  
+  companyName     String
+  companyType     String?  // 企业类型
+  contactPerson   String?
+  contactPhone    String?
+  
+  planType        SubscriptionPlan
+  status          SubscriptionStatus @default(ACTIVE)
+  
+  // 费用
+  monthlyFee      Decimal  @db.Decimal(10, 2)
+  mrr             Decimal  @db.Decimal(10, 2) // Monthly Recurring Revenue
+  
+  // 时间
+  startedAt       DateTime
+  nextBillingDate DateTime
+  expiresAt       DateTime?
+  
+  // 权益
+  maxLicenses     Int      @default(5)  // 最大授权数
+  maxAssets       Int      @default(50) // 最大资产查看数
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([partnerId])
+  @@index([status])
+  @@map("partner_subscriptions")
+}
+
+// ==================== 审计日志系统 ====================
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  
+  // 关联资产
+  assetId     String
+  asset       IPAsset  @relation(fields: [assetId], references: [id])
+  
+  // 操作信息
+  action      String   // 操作类型
+  actorId     String?  // 操作人
+  actorRole   String?  // 操作人角色
+  
+  // 详情
+  oldValue    String?  @db.Text
+  newValue    String?  @db.Text
+  reason      String?
+  
+  // 时间戳
+  createdAt   DateTime @default(now())
+  
+  @@index([assetId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ==================== 系统配置 ====================
+
+model SystemConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+  
+  @@map("system_configs")
+}
