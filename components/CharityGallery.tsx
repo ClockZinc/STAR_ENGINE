@@ -30,7 +30,7 @@ const CharityGallery: React.FC = () => {
         const response = await assetsApi.getAssets({ limit: '10' });
         const data = response.data || [];
         // 格式化资产数据
-        const formattedAssets = data.map((asset: any) => ({
+        let formattedAssets = data.map((asset: any) => ({
           id: asset.id,
           title: asset.name || asset.title || '未命名作品',
           artist: asset.childName || asset.creator?.nickname || '未知艺术家',
@@ -38,14 +38,70 @@ const CharityGallery: React.FC = () => {
           description: asset.description || asset.artStory || '暂无描述',
           emotionTags: asset.emotionTags || [],
         }));
+        
+        // 如果没有数据，使用默认测试数据
+        if (formattedAssets.length === 0) {
+          formattedAssets = [
+            {
+              id: 'test-1',
+              title: '星空之梦',
+              artist: '小宇',
+              image: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=800&h=500&fit=crop',
+              description: '这幅画描绘了孩子眼中的星空，充满了对宇宙的好奇与向往。蓝色和紫色的渐变代表着无限的想象空间。',
+              emotionTags: ['星空', '梦想', '宁静']
+            },
+            {
+              id: 'test-2',
+              title: '彩虹森林',
+              artist: '晨晨',
+              image: 'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=800&h=500&fit=crop',
+              description: '色彩斑斓的森林，代表着生命的活力与希望。每一笔都充满了对自然的热爱。',
+              emotionTags: ['森林', '生命', '希望']
+            },
+            {
+              id: 'test-3',
+              title: '海洋之心',
+              artist: '悦悦',
+              image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&h=500&fit=crop',
+              description: '深蓝色的海洋，深藏着孩子内心的世界。波浪的起伏象征着情感的流动。',
+              emotionTags: ['海洋', '深邃', '宁静']
+            }
+          ];
+        }
+        
         setAssets(formattedAssets);
         if (formattedAssets.length > 0) {
           setSelectedWork(formattedAssets[0]);
         }
       } catch (error) {
         console.error('加载资产失败:', error);
-        // 使用空数组，显示无数据状态
-        setAssets([]);
+        // 使用默认测试数据
+        setAssets([
+          {
+            id: 'test-1',
+            title: '星空之梦',
+            artist: '小宇',
+            image: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=800&h=500&fit=crop',
+            description: '这幅画描绘了孩子眼中的星空，充满了对宇宙的好奇与向往。蓝色和紫色的渐变代表着无限的想象空间。',
+            emotionTags: ['星空', '梦想', '宁静']
+          },
+          {
+            id: 'test-2',
+            title: '彩虹森林',
+            artist: '晨晨',
+            image: 'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=800&h=500&fit=crop',
+            description: '色彩斑斓的森林，代表着生命的活力与希望。每一笔都充满了对自然的热爱。',
+            emotionTags: ['森林', '生命', '希望']
+          },
+          {
+            id: 'test-3',
+            title: '海洋之心',
+            artist: '悦悦',
+            image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&h=500&fit=crop',
+            description: '深蓝色的海洋，深藏着孩子内心的世界。波浪的起伏象征着情感的流动。',
+            emotionTags: ['海洋', '深邃', '宁静']
+          }
+        ]);
       } finally {
         setAssetsLoading(false);
       }
