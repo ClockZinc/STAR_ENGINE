@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Palette, Sparkles, Image as ImageIcon, Copy, Check, Loader2, Wand2, Eye, LayoutGrid, Zap, Heart, Box, Rotate3d, Database, FileCode } from 'lucide-react';
 import { generateCreativePrompt, generateVisualAsset } from '../services/geminiService.ts';
+import { imageTo3D, check3DTaskStatus } from '../services/hunyuan3dService.ts';
 import { CreativePromptResult } from '../types.ts';
 import { assetsApi } from '../services/api.ts';
 
@@ -83,12 +84,51 @@ const CreativeDirector: React.FC = () => {
     }
   };
 
+  const [model3DUrl, setModel3DUrl] = useState<string | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(null);
+
   const handleTrigger3D = async () => {
+    if (!generatedImage) return;
     setThreeDLoading(true);
-    // 模拟调用刚才编写的 Python 后端模块逻辑
-    await new Promise(resolve => setTimeout(resolve, 4000));
-    setThreeDMode(true);
-    setThreeDLoading(false);
+    try {
+      // 使用腾讯混元3D生成3D模型
+      const result = await imageTo3D(generatedImage, {
+        prompt: '保持艺术风格，生成精致的3D模型，适合商业展示',
+        style: 'realistic',
+      });
+      
+      if (result.success && result.taskId) {
+        setTaskId(result.taskId);
+        // 轮询检查任务状态
+        const checkStatus = setInterval(async () => {
+          const status = await check3DTaskStatus(result.taskId!);
+          if (status.status === 'completed' && status.modelUrl) {
+            clearInterval(checkStatus);
+            setModel3DUrl(status.modelUrl);
+            setThreeDMode(true);
+            setThreeDLoading(false);
+          } else if (status.status === 'failed') {
+            clearInterval(checkStatus);
+            console.error('3D生成失败:', status.message);
+            setThreeDLoading(false);
+          }
+        }, 5000); // 每5秒检查一次
+        
+        // 60秒后自动停止轮询
+        setTimeout(() => {
+          clearInterval(checkStatus);
+          if (!model3DUrl) {
+            setThreeDLoading(false);
+          }
+        }, 60000);
+      } else {
+        console.error('3D生成失败:', result.message);
+        setThreeDLoading(false);
+      }
+    } catch (error) {
+      console.error('3D生成错误:', error);
+      setThreeDLoading(false);
+    }
   };
 
   const copyToClipboard = (text: string, index: number) => {
@@ -260,9 +300,19 @@ const CreativeDirector: React.FC = () => {
                         <button className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-black uppercase tracking-widest transition-all">
                            生成合作书
                         </button>
-                        <button className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-black uppercase">
-                           导出 .glb
-                        </button>
+                        {model3DUrl ? (
+                          <a 
+                            href={model3DUrl} 
+                            download 
+                            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-black uppercase flex items-center gap-2"
+                          >
+                            下载 .glb
+                          </a>
+                        ) : (
+                          <button className="px-4 py-2.5 bg-slate-800 text-slate-500 rounded-lg text-xs font-black uppercase cursor-not-allowed">
+                            生成中...
+                          </button>
+                        )}
                      </div>
                   </div>
                 )}
